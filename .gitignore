@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment (uv)
+.venv/
+venv/
+
+# uv
+.python-version
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Config overrides (keep config.yaml, ignore env-specific overrides)
+config.dev.yaml
+config.prod.yaml
+config.staging.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# mypy / pyright
+.mypy_cache/
+.pyright/
+
+# ruff / linting
+.ruff_cache/
+
+# Logs
+*.log
