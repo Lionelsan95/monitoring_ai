@@ -170,19 +170,33 @@ def _tab_analyze(repo: MetricRepository, pipeline, config) -> None:
         horizontal=True,
     )
 
+    now = datetime.now(tz=timezone.utc)
+
+    # Seed session state once so values survive mode switches.
+    # Keys are initialised here (outside the else branch) so Streamlit
+    # never evicts them when the user is temporarily on "Rolling window".
+    if "range_start_date" not in st.session_state:
+        st.session_state["range_start_date"] = (now - timedelta(hours=1)).date()
+    if "range_start_time" not in st.session_state:
+        st.session_state["range_start_time"] = (now - timedelta(hours=1)).replace(second=0, microsecond=0).time()
+    if "range_end_date" not in st.session_state:
+        st.session_state["range_end_date"] = now.date()
+    if "range_end_time" not in st.session_state:
+        st.session_state["range_end_time"] = now.replace(second=0, microsecond=0).time()
+
     if mode == "Rolling window":
         window = st.slider("Window (minutes)", min_value=30, max_value=480, value=60, step=30)
-        end   = datetime.now(tz=timezone.utc)
+        end   = now
         start = end - timedelta(minutes=window)
         window_minutes = window
     else:
         col1, col2 = st.columns(2)
         with col1:
-            start_date = st.date_input("Start date", value=datetime.now(tz=timezone.utc).date())
-            start_time = st.time_input("Start time (UTC)", value=datetime.now(tz=timezone.utc).replace(hour=10, minute=0, second=0).time())
+            start_date = st.date_input("Start date", key="range_start_date")
+            start_time = st.time_input("Start time (UTC)", key="range_start_time")
         with col2:
-            end_date = st.date_input("End date", value=datetime.now(tz=timezone.utc).date())
-            end_time = st.time_input("End time (UTC)", value=datetime.now(tz=timezone.utc).replace(hour=11, minute=0, second=0).time())
+            end_date = st.date_input("End date", key="range_end_date")
+            end_time = st.time_input("End time (UTC)", key="range_end_time")
 
         start = datetime.combine(start_date, start_time, tzinfo=timezone.utc)
         end   = datetime.combine(end_date,   end_time,   tzinfo=timezone.utc)
