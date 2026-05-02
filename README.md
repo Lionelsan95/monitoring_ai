@@ -9,7 +9,7 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 1. **Ingest** — accepts metric snapshots (CPU, memory, disk, latency, error rate, …) via REST API or CLI, validates them, and persists them in SQLite.
 2. **Analyse** — runs a LangGraph pipeline that sends the full time series to an LLM, which identifies anomalies, anchors each one to its exact timestamp, and classifies whether it is still active, self-resolved, or recurring.
 3. **Recommend** — a second LLM step takes the analysis result and produces a prioritised list of concrete remediation steps, framed differently depending on whether the anomaly is still live, already recovered, or showing a recurring pattern.
-4. **Report** — the final report (overall health, timestamped anomalies, status-aware actions, executive summary) is returned as structured JSON or rendered as a coloured CLI table.
+4. **Report** — the final report (overall health, timestamped anomalies, status-aware actions, executive summary) is returned as structured JSON, rendered as a coloured CLI table, or displayed in an interactive web dashboard.
 5. **Trace** — every pipeline run is traced in LangSmith with per-node latency, token usage, and full LLM input/output (opt-in via env var).
 
 ---
@@ -21,6 +21,7 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 │  Entrypoints                                                │
 │  FastAPI  (/ingest  /ingest/file  /analyze  /health)        │
 │  Click CLI  (ingest  analyze  db stats)                     │
+│  Streamlit  (Ingest tab  /  Analyze tab)                    │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -80,6 +81,7 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 | Observability | LangSmith (`langsmith`) |
 | REST API | FastAPI + Uvicorn |
 | CLI | Click |
+| Web UI | Streamlit (optional) |
 | Persistence | SQLite (stdlib `sqlite3`) |
 | Configuration | PyYAML + python-dotenv |
 | Testing | pytest + pytest-asyncio |
@@ -121,7 +123,8 @@ monitoring_ai/
 │   │
 │   └── entrypoints/
 │       ├── api.py               # FastAPI app
-│       └── cli.py               # Click CLI
+│       ├── cli.py               # Click CLI
+│       └── ui.py                # Streamlit dashboard (optional)
 │
 └── tests/
     ├── conftest.py
@@ -148,7 +151,9 @@ monitoring_ai/
 ```bash
 git clone <repo-url>
 cd monitoring_ai
-uv sync --extra dev
+uv sync --extra dev        # API + CLI + tests
+uv sync --extra ui         # add Streamlit dashboard
+uv sync --extra dev --extra ui  # everything
 ```
 
 **2. Configure secrets**
@@ -239,6 +244,16 @@ Available at `http://localhost:8000`. Interactive docs at `http://localhost:8000
 ```bash
 uv run monitoring-ai --help
 ```
+
+### Streamlit dashboard
+
+```bash
+uv run streamlit run src/entrypoints/ui.py
+```
+
+Available at `http://localhost:8501`. Requires the `ui` extra (`uv sync --extra ui`).
+
+The dashboard and the REST API are fully independent — neither requires the other to be running.
 
 ---
 
@@ -445,6 +460,45 @@ Display the database path and total record count.
 ```bash
 uv run monitoring-ai db stats
 ```
+
+---
+
+## Streamlit UI reference
+
+```bash
+uv run streamlit run src/entrypoints/ui.py
+```
+
+The dashboard exposes two tabs.
+
+### Ingest tab
+
+- Drag-and-drop (or click to browse) a JSON metrics file — single object or array.
+- Press **Ingest** to validate and persist. Results show saved / error counts.
+- A live record count is displayed at the bottom.
+
+### Analyze tab
+
+**Rolling window mode** — a slider from 30 to 480 minutes, computed back from now.
+
+**Explicit range mode** — separate date and time pickers for start and end (UTC).
+
+Press **Analyse** to run the pipeline. The report renders inline:
+
+| Section | Content |
+|---|---|
+| Overall health | Colour-coded indicator (🟢 info / 🟡 warning / 🔴 critical) |
+| Executive summary | 2–3 sentence synthesis from the LLM |
+| Anomaly table | Metric, value, threshold, severity, status, started\_at, resolved\_at |
+| Action list | Collapsible expanders per action, coloured by priority |
+
+Anomaly status colours: `active` = red, `recovered` = green, `recurring` = orange.
+
+The dashboard calls domain functions directly — the FastAPI server does not need to be running.
+
+### Removing the UI
+
+Delete `src/entrypoints/ui.py` and remove the `ui` extra from `pyproject.toml`. Nothing else is affected.
 
 ---
 
