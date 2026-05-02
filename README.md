@@ -487,12 +487,15 @@ Press **Analyse** to run the pipeline. The report renders inline:
 
 | Section | Content |
 |---|---|
+| Download button | Appears at the top of the report — exports the full report as a JSON file |
 | Overall health | Colour-coded indicator (🟢 info / 🟡 warning / 🔴 critical) |
 | Executive summary | 2–3 sentence synthesis from the LLM |
 | Anomaly table | Metric, value, threshold, severity, status, started\_at, resolved\_at |
 | Action list | Collapsible expanders per action, coloured by priority |
 
 Anomaly status colours: `active` = red, `recovered` = green, `recurring` = orange.
+
+The downloaded file is named `report_<window_start>_to_<window_end>.json` and contains the full `Report` object — identical to the JSON returned by `POST /analyze`.
 
 The dashboard calls domain functions directly — the FastAPI server does not need to be running.
 

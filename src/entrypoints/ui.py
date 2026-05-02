@@ -79,6 +79,18 @@ _PRIORITY_COLOR = {
 
 
 def _render_report(report: Report) -> None:
+    filename = (
+        f"report_{report.window_start:%Y-%m-%d_%Hh%M}"
+        f"_to_{report.window_end:%Y-%m-%d_%Hh%M}.json"
+    )
+    st.download_button(
+        label="Download JSON report",
+        data=report.model_dump_json(indent=2),
+        file_name=filename,
+        mime="application/json",
+        use_container_width=True,
+    )
+
     icon  = _HEALTH_COLOR.get(report.overall_health, "⚪")
     label = report.overall_health.value.upper()
 
