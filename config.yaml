@@ -1,0 +1,21 @@
+# ── LLM configuration ────────────────────────────────────────────────────────
+# Secrets (API keys, DB path) stay in .env — only model config lives here.
+#
+# Load order (lowest → highest priority):
+#   1. defaults section   — applied to every node
+#   2. nodes.<name>       — overrides defaults for that node
+
+defaults:
+  temperature: 0.2
+  max_tokens: 2048
+
+nodes:
+  analysis:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.2
+
+  recommendation:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.3
