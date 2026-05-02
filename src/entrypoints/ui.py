@@ -97,6 +97,9 @@ def _render_report(report: Report) -> None:
     if not report.anomalies:
         st.success("No anomalies detected in this window.")
     else:
+        multi_day = report.window_start.date() != report.window_end.date()
+        ts_fmt    = "%d %b %H:%M" if multi_day else "%H:%M"
+
         rows = []
         for a in report.anomalies:
             rows.append({
@@ -105,8 +108,8 @@ def _render_report(report: Report) -> None:
                 "Threshold":   str(a.threshold),
                 "Severity":    a.severity.value,
                 "Status":      a.status.value,
-                "Started at":  a.started_at.strftime("%H:%M"),
-                "Resolved at": a.resolved_at.strftime("%H:%M") if a.resolved_at else "—",
+                "Started at":  a.started_at.strftime(ts_fmt),
+                "Resolved at": a.resolved_at.strftime(ts_fmt) if a.resolved_at else "—",
                 "Description": a.description,
             })
         st.dataframe(rows, use_container_width=True, hide_index=True)
