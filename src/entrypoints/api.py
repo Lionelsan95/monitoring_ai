@@ -21,7 +21,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel, Field
 
 from config import load_config
-from domain.ingestor import IngestResult, ingest_file, ingest_records
+from domain.ingestor import IngestResult, ingest_file, ingest_records, parse_file
 from domain.schemas import AnalyzeParams, Report
 from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
@@ -94,6 +94,36 @@ async def ingest_file_endpoint(
     if result.saved == 0 and result.errors > 0:
         raise HTTPException(status_code=422, detail=result.messages)
     return IngestResponse(saved=result.saved, errors=result.errors, messages=result.messages)
+
+
+@app.post("/analyze/file", response_model=Report)
+async def analyze_file_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+) -> Report:
+    """Analyse records from an uploaded JSON file without persisting them."""
+    content = await file.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        records, errors = parse_file(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+    if not records:
+        raise HTTPException(status_code=422, detail=errors or ["No valid records in file."])
+
+    start = min(r.timestamp for r in records)
+    end   = max(r.timestamp for r in records)
+
+    state = request.app.state.pipeline.invoke(
+        {"records": records},
+        build_run_config(len(records), start=start, end=end),
+    )
+    return state["report"]
 
 
 @app.post("/analyze", response_model=Report)

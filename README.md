@@ -19,9 +19,10 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Entrypoints                                                │
-│  FastAPI  (/ingest  /ingest/file  /analyze  /health)        │
-│  Click CLI  (ingest  analyze  db stats)                     │
-│  Streamlit  (Ingest tab  /  Analyze tab)                    │
+│  FastAPI  (/ingest  /ingest/file  /analyze  /analyze/file   │
+│            /health)                                         │
+│  Click CLI  (ingest  analyze  analyze --file  db stats)     │
+│  Streamlit  (Ingest / Analyze / Direct analysis tabs)       │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -110,7 +111,7 @@ monitoring_ai/
 │   │   ├── ports.py             # AnomalyDetectorPort, ActionPlannerPort, RepositoryPort
 │   │   ├── analysis.py          # run_analysis(records, detector) → AnalysisResult
 │   │   ├── recommendation.py    # run_recommendation(analysis, planner) → Report
-│   │   └── ingestor.py          # ingest_records() / ingest_file()
+│   │   └── ingestor.py          # ingest_records() / ingest_file() / parse_file()
 │   │
 │   ├── infrastructure/
 │   │   ├── llm.py               # LangChainAnomalyDetector, LangChainActionPlanner
@@ -324,6 +325,19 @@ curl -X POST http://localhost:8000/ingest/file \
 
 ---
 
+### `POST /analyze/file`
+
+Analyse records from an uploaded JSON file **without persisting them to the database**. Time range is derived from the records themselves.
+
+```bash
+curl -X POST http://localhost:8000/analyze/file \
+  -F "file=@metrics.json"
+```
+
+Returns the same `Report` object as `POST /analyze`. A 422 is returned if no valid records are found in the file.
+
+---
+
 ### `POST /analyze`
 
 Run the full analysis + recommendation pipeline. Supports two mutually exclusive query modes.
@@ -427,9 +441,13 @@ The file can be a single JSON object or a JSON array of records. Invalid records
 
 ### `monitoring-ai analyze`
 
-Run the pipeline over recent records. Supports the same two modes as the API.
+Run the pipeline over recent records. Supports three modes.
 
 ```bash
+# Analyse a file directly — no DB write
+uv run monitoring-ai analyze --file metrics.json
+uv run monitoring-ai analyze -f metrics.json --output json
+
 # Rolling window — default 60 min
 uv run monitoring-ai analyze
 
@@ -446,12 +464,13 @@ uv run monitoring-ai analyze --start 2024-01-15T10:00:00Z --end 2024-01-15T11:00
 
 | Flag | Default | Description |
 |---|---|---|
-| `--window`, `-w` | `60` | Rolling window in minutes (min 30). Ignored if `--start`/`--end` are set. |
+| `--file`, `-f` | — | Analyse records from a JSON file without saving to the database |
+| `--window`, `-w` | `60` | Rolling window in minutes (min 30). Ignored if `--file` or `--start`/`--end` are set. |
 | `--start` | — | Range start — ISO 8601 datetime, e.g. `2024-01-15T10:00:00Z` |
 | `--end` | — | Range end   — ISO 8601 datetime, e.g. `2024-01-15T11:00:00Z` |
 | `--output`, `-o` | `text` | Output format: `text` or `json` |
 
-`--start` and `--end` must always be provided together.
+`--start` and `--end` must always be provided together. `--file` takes precedence over both.
 
 ### `monitoring-ai db stats`
 
@@ -469,7 +488,7 @@ uv run monitoring-ai db stats
 uv run streamlit run src/entrypoints/ui.py
 ```
 
-The dashboard exposes two tabs.
+The dashboard exposes three tabs.
 
 ### Ingest tab
 
@@ -496,6 +515,10 @@ Press **Analyse** to run the pipeline. The report renders inline:
 Anomaly status colours: `active` = red, `recovered` = green, `recurring` = orange.
 
 The downloaded file is named `report_<window_start>_to_<window_end>.json` and contains the full `Report` object — identical to the JSON returned by `POST /analyze`.
+
+### Direct analysis tab
+
+Upload a JSON file and receive a report instantly — **nothing is saved to the database**. The time range is derived from the timestamps in the file. Useful for one-shot analysis of any metrics snapshot without polluting the stored history.
 
 The dashboard calls domain functions directly — the FastAPI server does not need to be running.
 

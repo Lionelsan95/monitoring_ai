@@ -1,9 +1,10 @@
 """
 Streamlit entrypoint — dashboard UI.
 
-Two tabs:
-  Ingest  — upload a JSON metrics file and persist it to the database
-  Analyze — pick a time window or explicit range, run the pipeline, read the report
+Three tabs:
+  Ingest          — upload a JSON metrics file and persist it to the database
+  Analyze         — pick a time window or explicit range, run the pipeline, read the report
+  Direct analysis — upload a JSON file, analyse without persisting to the database
 
 Calls domain functions directly (same as the CLI). Does not go through the
 FastAPI server — both can run independently.
@@ -19,7 +20,7 @@ import os
 import streamlit as st
 
 from config import load_config
-from domain.ingestor import ingest_file
+from domain.ingestor import ingest_file, parse_file
 from domain.schemas import AnomalyStatus, Report, Severity
 from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
@@ -244,6 +245,47 @@ def _tab_analyze(repo: MetricRepository, pipeline, config) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tab — Direct analysis (no DB write)
+# ---------------------------------------------------------------------------
+
+def _tab_analyze_file(pipeline) -> None:
+    st.subheader("Analyse a file without saving to the database")
+    st.caption("Upload a JSON file, get a report instantly — nothing is persisted.")
+
+    uploaded = st.file_uploader("Choose a JSON file", type=["json"], key="direct_file")
+
+    if uploaded and st.button("Analyse file", type="primary"):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            tmp.write(uploaded.read())
+            tmp_path = Path(tmp.name)
+
+        try:
+            records, errors = parse_file(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        if errors:
+            for msg in errors:
+                st.warning(msg)
+
+        if not records:
+            st.error("No valid records found in the file.")
+            return
+
+        start = min(r.timestamp for r in records)
+        end   = max(r.timestamp for r in records)
+
+        st.info(f"Analysing **{len(records)}** record(s)…")
+
+        with st.spinner("Running pipeline…"):
+            run_cfg        = build_run_config(len(records), start=start, end=end)
+            state          = pipeline.invoke({"records": records}, run_cfg)
+            report: Report = state["report"]
+
+        _render_report(report)
+
+
+# ---------------------------------------------------------------------------
 # Main layout
 # ---------------------------------------------------------------------------
 
@@ -253,13 +295,16 @@ def main() -> None:
 
     repo, pipeline, config = _load_resources()
 
-    tab_ingest, tab_analyze = st.tabs(["Ingest", "Analyze"])
+    tab_ingest, tab_analyze, tab_direct = st.tabs(["Ingest", "Analyze", "Direct analysis"])
 
     with tab_ingest:
         _tab_ingest(repo)
 
     with tab_analyze:
         _tab_analyze(repo, pipeline, config)
+
+    with tab_direct:
+        _tab_analyze_file(pipeline)
 
 
 if __name__ == "__main__":

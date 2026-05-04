@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from domain.ingestor import IngestResult, ingest_file, ingest_records
+from domain.ingestor import IngestResult, ingest_file, ingest_records, parse_file
 from domain.schemas import MetricRecord, ServiceStatuses, ServiceStatus
 
 
@@ -100,3 +100,56 @@ def test_ingest_file_invalid_json(tmp_path: Path) -> None:
     assert result.saved  == 0
     assert result.errors == 1
     assert "Invalid JSON" in result.messages[0]
+
+
+# ---------------------------------------------------------------------------
+# parse_file
+# ---------------------------------------------------------------------------
+
+def test_parse_file_array(sample_record: MetricRecord, tmp_path: Path) -> None:
+    path = tmp_path / "records.json"
+    path.write_text(json.dumps([sample_record.model_dump(mode="json")], default=str))
+    records, errors = parse_file(path)
+
+    assert len(records) == 1
+    assert errors       == []
+
+
+def test_parse_file_single_object(sample_record: MetricRecord, tmp_path: Path) -> None:
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps(sample_record.model_dump(mode="json"), default=str))
+    records, errors = parse_file(path)
+
+    assert len(records) == 1
+    assert errors       == []
+
+
+def test_parse_file_partial_invalid(sample_record: MetricRecord, tmp_path: Path) -> None:
+    path = tmp_path / "mixed.json"
+    path.write_text(json.dumps([
+        sample_record.model_dump(mode="json"),
+        {"bad": "data"},
+    ], default=str))
+    records, errors = parse_file(path)
+
+    assert len(records) == 1
+    assert len(errors)  == 1
+
+
+def test_parse_file_all_invalid(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.json"
+    path.write_text(json.dumps([{"bad": "data"}, {"also": "bad"}]))
+    records, errors = parse_file(path)
+
+    assert records     == []
+    assert len(errors) == 2
+
+
+def test_parse_file_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "bad.json"
+    path.write_text("not valid json {{{")
+    records, errors = parse_file(path)
+
+    assert records     == []
+    assert len(errors) == 1
+    assert "Invalid JSON" in errors[0]

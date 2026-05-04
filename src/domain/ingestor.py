@@ -45,6 +45,33 @@ def ingest_records(raw: list[dict], repo: RepositoryPort) -> IngestResult:
     return result
 
 
+def parse_file(path: Path) -> tuple[list[MetricRecord], list[str]]:
+    """
+    Parse and validate a JSON file into MetricRecord objects without persisting.
+
+    Returns (valid_records, error_messages). Accepts a single object or an array.
+    Errors are collected per-record; valid records are always returned.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [], [f"Invalid JSON file: {e}"]
+
+    if isinstance(raw, dict):
+        raw = [raw]
+
+    valid:  list[MetricRecord] = []
+    errors: list[str]          = []
+
+    for i, item in enumerate(raw):
+        try:
+            valid.append(MetricRecord.model_validate(item))
+        except ValidationError as e:
+            errors.append(f"Record {i}: {e.error_count()} validation error(s)")
+
+    return valid, errors
+
+
 def ingest_file(path: Path, repo: RepositoryPort) -> IngestResult:
     """
     Load a JSON file (single object or array of records) and delegate to ingest_records.

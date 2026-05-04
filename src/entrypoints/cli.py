@@ -16,7 +16,7 @@ from pathlib import Path
 import click
 
 from config import load_config
-from domain.ingestor import ingest_file
+from domain.ingestor import ingest_file, parse_file
 from domain.schemas import AnalyzeParams, Report, Severity
 from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
@@ -83,10 +83,16 @@ def ingest(filepath: Path) -> None:
 
 @cli.command()
 @click.option(
+    "--file", "-f", "from_file",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Analyse records from a JSON file without saving to the database.",
+)
+@click.option(
     "--window", "-w",
     default=60,
     show_default=True,
-    help="Rolling window in minutes (minimum 30). Ignored if --start/--end are set.",
+    help="Rolling window in minutes (minimum 30). Ignored if --start/--end or --file are set.",
 )
 @click.option(
     "--start",
@@ -107,51 +113,75 @@ def ingest(filepath: Path) -> None:
     show_default=True,
     help="Output format.",
 )
-def analyze(window: int, start_str: str | None, end_str: str | None, output: str) -> None:
+def analyze(from_file: Path | None, window: int, start_str: str | None, end_str: str | None, output: str) -> None:
     """Run the analysis pipeline over recent records.
 
     \b
     Examples:
+      # Analyse a file directly (no DB write)
+      monitoring-ai analyze --file metrics.json
+
       # Rolling window (default 60 min)
       monitoring-ai analyze --window 30
 
       # Explicit range
       monitoring-ai analyze --start 2024-01-15T10:00:00Z --end 2024-01-15T11:00:00Z
     """
-    # Parse and validate params — reuse the same Pydantic model as the API
-    try:
-        params = AnalyzeParams(
-            window_minutes=window,
-            start=_parse_iso(start_str),
-            end=_parse_iso(end_str),
+    _, config = _make_repo_and_config()
+    pipeline  = build_pipeline(config)
+
+    if from_file:
+        records, errors = parse_file(from_file)
+        if errors:
+            for msg in errors:
+                click.echo(f"  ⚠  {msg}", err=True)
+        if not records:
+            click.echo("No valid records in file.", err=True)
+            sys.exit(1)
+
+        start = min(r.timestamp for r in records)
+        end   = max(r.timestamp for r in records)
+        click.echo(f"Analysing {len(records)} record(s) from file...", err=True)
+
+        state          = pipeline.invoke(
+            {"records": records},
+            build_run_config(len(records), start=start, end=end),
         )
-    except ValueError as exc:
-        raise click.UsageError(str(exc)) from exc
+        report: Report = state["report"]
 
-    repo, config = _make_repo_and_config()
-
-    # Resolve time range
-    if params.start and params.end:
-        start, end     = params.start, params.end
-        window_minutes = None
     else:
-        end            = datetime.now(tz=timezone.utc)
-        start          = end - timedelta(minutes=params.window_minutes)
-        window_minutes = params.window_minutes
+        # Parse and validate params — reuse the same Pydantic model as the API
+        try:
+            params = AnalyzeParams(
+                window_minutes=window,
+                start=_parse_iso(start_str),
+                end=_parse_iso(end_str),
+            )
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
 
-    records = repo.fetch_range(start, end)
-    if not records:
-        click.echo("No records found in the requested time range.", err=True)
-        sys.exit(1)
+        repo, _ = _make_repo_and_config()
 
-    click.echo(f"Analysing {len(records)} record(s)...", err=True)
+        if params.start and params.end:
+            start, end     = params.start, params.end
+            window_minutes = None
+        else:
+            end            = datetime.now(tz=timezone.utc)
+            start          = end - timedelta(minutes=params.window_minutes)
+            window_minutes = params.window_minutes
 
-    pipeline       = build_pipeline(config)
-    state          = pipeline.invoke(
-        {"records": records},
-        build_run_config(len(records), start=start, end=end, window_minutes=window_minutes),
-    )
-    report: Report = state["report"]
+        records = repo.fetch_range(start, end)
+        if not records:
+            click.echo("No records found in the requested time range.", err=True)
+            sys.exit(1)
+
+        click.echo(f"Analysing {len(records)} record(s)...", err=True)
+
+        state          = pipeline.invoke(
+            {"records": records},
+            build_run_config(len(records), start=start, end=end, window_minutes=window_minutes),
+        )
+        report: Report = state["report"]
 
     if output == "json":
         click.echo(report.model_dump_json(indent=2))
