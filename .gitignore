@@ -54,3 +54,11 @@ coverage.xml
 
 # Logs
 *.log
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfstate.lock.info
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl

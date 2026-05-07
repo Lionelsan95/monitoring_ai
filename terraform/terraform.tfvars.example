@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored — never commit real values.
+
+aws_region    = "eu-west-1"
+project_name  = "monitoring-ai"
+environment   = "prod"
+image_tag     = "latest"   # overridden by CI/CD with the git SHA
+
+task_cpu      = 512   # 0.5 vCPU
+task_memory   = 1024  # 1 GB RAM
+
+desired_count  = 1
+persistent_db  = false  # set to true to enable EFS-backed SQLite (adds cost)
