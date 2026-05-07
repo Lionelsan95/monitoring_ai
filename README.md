@@ -78,7 +78,7 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 | Package manager | [uv](https://github.com/astral-sh/uv) |
 | Data validation | Pydantic v2 |
 | LLM orchestration | LangGraph + LangChain Core |
-| LLM providers | OpenAI (`langchain-openai`), Anthropic (`langchain-anthropic`) |
+| LLM providers | OpenAI · Anthropic · Ollama (local) |
 | Observability | LangSmith (`langsmith`) |
 | REST API | FastAPI + Uvicorn |
 | CLI | Click |
@@ -86,6 +86,10 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 | Persistence | SQLite (stdlib `sqlite3`) |
 | Configuration | PyYAML + python-dotenv |
 | Testing | pytest + pytest-asyncio |
+| Linting | ruff |
+| Containerisation | Docker + docker-compose |
+| CI/CD | GitHub Actions (OIDC auth to AWS) |
+| Infrastructure | Terraform (ECS Fargate + ALB + ECR + Secrets Manager) |
 
 ---
 
@@ -93,7 +97,12 @@ AI-powered infrastructure monitoring pipeline. Ingests system metric snapshots, 
 
 ```
 monitoring_ai/
-├── config.yaml                  # LLM model config (provider, model, temperature)
+├── Makefile                     # Dev and ops commands (make help for list)
+├── Dockerfile                   # Multi-stage build (uv builder → python:3.12-slim)
+├── docker-compose.yml           # Local stack: api + ui + ollama
+├── config.yaml                  # LLM model config — cloud providers (default)
+├── config/
+│   └── ollama.yaml              # LLM model config — local Ollama (docker-compose default)
 ├── .env                         # Secrets — API keys, DB path  (not committed)
 ├── .env.example                 # Template for .env
 ├── pyproject.toml
@@ -127,12 +136,24 @@ monitoring_ai/
 │       ├── cli.py               # Click CLI
 │       └── ui.py                # Streamlit dashboard (optional)
 │
-└── tests/
-    ├── conftest.py
-    ├── test_analysis.py
-    ├── test_recommendation.py
-    ├── test_ingestor.py
-    └── test_repository.py
+├── tests/
+│   ├── conftest.py
+│   ├── test_analysis.py
+│   ├── test_recommendation.py
+│   ├── test_ingestor.py
+│   └── test_repository.py
+│
+└── terraform/
+    ├── backend.tf               # S3 remote state + DynamoDB locking
+    ├── main.tf                  # Root — wires modules
+    ├── variables.tf
+    ├── outputs.tf
+    ├── terraform.tfvars.example
+    └── modules/
+        ├── networking/          # VPC, subnets, IGW, security groups
+        ├── ecr/                 # ECR repository + lifecycle policy
+        ├── secrets/             # Secrets Manager + IAM roles
+        └── ecs/                 # ECS cluster, task def, ALB, service
 ```
 
 ---
@@ -141,20 +162,47 @@ monitoring_ai/
 
 - Python 3.12+
 - [uv](https://github.com/astral-sh/uv): `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- At least one API key: OpenAI and/or Anthropic, depending on the models set in `config.yaml`
+- Docker + Docker Compose (for local Ollama stack)
+- An LLM: either a cloud API key (OpenAI / Anthropic) **or** Docker (Ollama — no key needed)
 
 ---
 
-## Setup
+## Quick start — local stack with Ollama (no API key)
 
-**1. Clone and install**
+The fastest way to run everything locally using free open-weight models:
+
+```bash
+# 1. Clone and start the compose stack
+git clone <repo-url> && cd monitoring_ai
+docker compose up -d
+
+# 2. Pull the default model (one-time, ~2 GB)
+make ollama-pull          # or: docker compose exec ollama ollama pull llama3.2:3b
+
+# 3. Ingest some metrics and analyse
+make ingest FILE=your_metrics.json
+make analyze
+```
+
+API → `http://localhost:8000` · UI → `http://localhost:8501`
+
+---
+
+## Setup — local dev (bare metal)
+
+**1. Install**
 
 ```bash
 git clone <repo-url>
 cd monitoring_ai
-uv sync --extra dev        # API + CLI + tests
-uv sync --extra ui         # add Streamlit dashboard
-uv sync --extra dev --extra ui  # everything
+make install              # dev + UI + Ollama extras
+make install-all          # also adds OpenAI + Anthropic
+```
+
+Or manually:
+```bash
+uv sync --extra dev --extra ui --extra ollama       # Ollama-only
+uv sync --extra dev --extra ui --extra openai --extra anthropic  # cloud providers
 ```
 
 **2. Configure secrets**
@@ -163,35 +211,47 @@ uv sync --extra dev --extra ui  # everything
 cp .env.example .env
 ```
 
-Edit `.env` with your API keys:
+Edit `.env` with the key for your chosen provider:
 
 ```env
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...         # for provider: openai
+ANTHROPIC_API_KEY=sk-ant-...  # for provider: anthropic
+# No key needed for provider: ollama
 ```
 
-**3. Configure models** (optional)
+**3. Configure the LLM provider**
 
-`config.yaml` controls which model runs each pipeline step. Edit it to switch providers or models without touching any Python:
+`config.yaml` (cloud) or `config/ollama.yaml` (local Ollama):
 
 ```yaml
-defaults:
-  temperature: 0.2
-  max_tokens: 2048
-
 nodes:
   analysis:
-    provider: openai       # openai | anthropic
+    provider: openai    # openai | anthropic | ollama
     model: gpt-4o
-    temperature: 0.2
-
   recommendation:
     provider: anthropic
     model: claude-sonnet-4-6
-    temperature: 0.3
+```
+
+Point to the Ollama config at runtime:
+```bash
+CONFIG_PATH=config/ollama.yaml uv run monitoring-ai analyze
 ```
 
 Any field set under a node overrides the global `defaults`.
+
+---
+
+## LLM providers
+
+| Provider | Extra | Key required | Notes |
+|---|---|---|---|
+| `openai` | `[openai]` | `OPENAI_API_KEY` | Default in `config.yaml` |
+| `anthropic` | `[anthropic]` | `ANTHROPIC_API_KEY` | |
+| `ollama` | `[ollama]` | None | Requires local Ollama server. Compose default. |
+| `bedrock` | `[bedrock]` | IAM role (no key) | For ECS — uses task role, not API key |
+
+**Ollama RAM requirements:** `llama3.2:3b` → 4 GB · `llama3.1:8b` → 8 GB · `mistral:7b` → 8 GB
 
 ---
 
@@ -220,9 +280,10 @@ CONFIG_PATH=config.prod.yaml
 |---|---|---|
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
-| `DB_PATH` | Path to the SQLite database file | `monitoring_ai.db` |
+| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
+| `DB_PATH` | Path to the SQLite database file | anchored to project root |
 | `CONFIG_PATH` | Path to the YAML config file | `config.yaml` |
-| `PROMPTS_DIR` | Path to the prompts directory | `prompts/` |
+| `PROMPTS_DIR` | Path to the prompts directory | anchored to project root |
 | `APP_ENV` | Environment tag attached to LangSmith traces | `dev` |
 | `LANGCHAIN_TRACING_V2` | Set to `true` to enable LangSmith tracing | off |
 | `LANGCHAIN_API_KEY` | LangSmith API key | — |
@@ -230,31 +291,77 @@ CONFIG_PATH=config.prod.yaml
 
 ---
 
-## Running
-
-### REST API
+## Makefile reference
 
 ```bash
-uv run uvicorn entrypoints.api:app --reload
+make help            # list all targets with descriptions
+
+# Setup
+make install         # uv sync with dev + ui + ollama extras
+make install-all     # also adds openai + anthropic
+
+# Quality
+make lint            # ruff check src/ tests/
+make format          # ruff format src/ tests/
+make check           # lint + test
+make test            # pytest -v
+
+# Local servers (bare metal)
+make api             # FastAPI with --reload
+make ui              # Streamlit dashboard
+
+# CLI shortcuts
+make ingest FILE=metrics.json
+make analyze [WINDOW=60]
+make analyze-file FILE=metrics.json
+make analyze-range START=2024-01-15T10:00:00Z END=2024-01-15T11:00:00Z
+make db-stats
+
+# Docker
+make docker-build    # build the image
+make docker-up       # start api + ui + ollama
+make docker-down     # stop all services
+make docker-logs     # follow logs
+make docker-shell    # bash in the api container
+make ollama-pull     # pull llama3.2:3b into the running Ollama container
+
+make clean           # remove __pycache__ and .pyc files
 ```
 
-Available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+---
 
-### CLI
+## Running
+
+### Docker compose (recommended for local dev)
+
+```bash
+docker compose up -d
+docker compose exec ollama ollama pull llama3.2:3b  # first time only
+```
+
+API → `http://localhost:8000` · Docs → `http://localhost:8000/docs` · UI → `http://localhost:8501`
+
+### REST API (bare metal)
+
+```bash
+make api
+# or: uv run uvicorn entrypoints.api:app --reload
+```
+
+### CLI (bare metal)
 
 ```bash
 uv run monitoring-ai --help
 ```
 
-### Streamlit dashboard
+### Streamlit dashboard (bare metal)
 
 ```bash
-uv run streamlit run src/entrypoints/ui.py
+make ui
+# or: uv run streamlit run src/entrypoints/ui.py
 ```
 
-Available at `http://localhost:8501`. Requires the `ui` extra (`uv sync --extra ui`).
-
-The dashboard and the REST API are fully independent — neither requires the other to be running.
+Requires the `ui` extra (`uv sync --extra ui`). The dashboard and the REST API are fully independent.
 
 ---
 
@@ -566,12 +673,96 @@ When `LANGCHAIN_TRACING_V2` is absent or `false`, the `RunnableConfig` passed to
 
 ---
 
+## CI/CD
+
+GitHub Actions runs four jobs on every push and pull request:
+
+| Job | Trigger | What it does |
+|---|---|---|
+| `lint` | every push/PR | `ruff check src/ tests/` |
+| `test` | every push/PR | `pytest -v` (offline, no LLM keys) |
+| `build` | after lint + test | `docker buildx build` with GHA layer cache |
+| `push-ecr` | master push only | OIDC auth → ECR login → tag + push image |
+
+The `push-ecr` job uses OIDC token exchange — no long-lived `AWS_ACCESS_KEY_ID` stored in GitHub.
+
+**Required GitHub secrets/vars for ECR push:**
+
+| Name | Type | Value |
+|---|---|---|
+| `AWS_ROLE_ARN` | Secret | IAM role ARN with ECR push permissions |
+| `AWS_REGION` | Variable | e.g. `eu-west-1` |
+| `ECR_REPOSITORY` | Variable | e.g. `monitoring-ai` |
+
+The job skips gracefully (via `continue-on-error`) if `AWS_ROLE_ARN` is not set — safe for forks and open PRs.
+
+---
+
+## Terraform — AWS deployment
+
+### Bootstrap (once, manual)
+
+Before the first `terraform apply`, create the remote state backend:
+
+```bash
+# S3 bucket (update region and bucket name to match backend.tf)
+aws s3api create-bucket --bucket monitoring-ai-tfstate --region eu-west-1 \
+  --create-bucket-configuration LocationConstraint=eu-west-1
+aws s3api put-bucket-versioning --bucket monitoring-ai-tfstate \
+  --versioning-configuration Status=Enabled
+
+# DynamoDB lock table
+aws dynamodb create-table --table-name monitoring-ai-tfstate-lock \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST --region eu-west-1
+
+# OIDC provider for GitHub Actions (once per AWS account)
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+```
+
+### Deploy
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # fill in your values
+terraform init
+terraform plan
+terraform apply
+```
+
+Outputs: `api_url`, `ecr_repository_url`, `ecr_push_command`.
+
+### Architecture created
+
+```
+Internet → ALB (port 80) → ECS Fargate (port 8000) → monitoring-ai container
+                                                      ↓
+                                              Secrets Manager (API keys)
+                                              CloudWatch Logs
+```
+
+VPC with 2 public subnets across 2 AZs. Fargate tasks assigned public IPs (no NAT Gateway cost). SQLite is ephemeral by default (`persistent_db = false`); set to `true` to add EFS volume for durable storage.
+
+### Add Bedrock (when ready)
+
+1. Uncomment the `bedrock_access` IAM policy in `terraform/modules/secrets/main.tf`
+2. Add `langchain-aws` to the `[bedrock]` extra and install it in the Dockerfile
+3. Add the `bedrock` branch in `src/infrastructure/llm.py`
+4. Set `provider: bedrock` and the correct model ARN in `config.yaml`
+5. No API key needed — the ECS task role is used automatically
+
+---
+
 ## Running tests
 
 Tests run entirely offline — no real LLM calls, no external services, no LangSmith connection.
 
 ```bash
-uv run pytest                         # all tests
+make test                             # all tests (via Makefile)
 uv run pytest -v                      # verbose
 uv run pytest tests/test_analysis.py  # single file
 ```
