@@ -1,0 +1,94 @@
+name: monitoring-ai
+
+# ── Services ──────────────────────────────────────────────────────────────────
+#
+# Usage:
+#   docker compose up -d            # start everything
+#   docker compose exec ollama ollama pull llama3.2:3b  # pull the model once
+#   (or: make ollama-pull)
+#
+# The stack uses the Ollama provider by default (no API keys required).
+# To switch to OpenAI / Anthropic, set CONFIG_PATH and the relevant API key
+# in a .env file and restart.
+#
+# Ports:
+#   API  → http://localhost:8000  (docs: http://localhost:8000/docs)
+#   UI   → http://localhost:8501
+#   LLM  → http://localhost:11434 (internal only, exposed for dev inspection)
+
+services:
+
+  # ── Ollama ─────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── FastAPI ─────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    environment:
+      CONFIG_PATH:      /app/config/ollama.yaml
+      DB_PATH:          /app/data/monitoring_ai.db
+      APP_ENV:          local
+      OLLAMA_BASE_URL:  http://ollama:11434
+      # Cloud keys (only needed when using openai/anthropic provider):
+      # OPENAI_API_KEY:    ${OPENAI_API_KEY}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # LangSmith (optional):
+      # LANGCHAIN_TRACING_V2: "true"
+      # LANGCHAIN_API_KEY:    ${LANGCHAIN_API_KEY}
+      # LANGCHAIN_PROJECT:    monitoring_ai_local
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Streamlit UI ────────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: .
+      target: runtime
+    command:
+      - streamlit
+      - run
+      - src/entrypoints/ui.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+    ports:
+      - "8501:8501"
+    environment:
+      CONFIG_PATH:      /app/config/ollama.yaml
+      DB_PATH:          /app/data/monitoring_ai.db
+      APP_ENV:          local
+      OLLAMA_BASE_URL:  http://ollama:11434
+    volumes:
+      - db-data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  ollama-data:   # Ollama model weights — persisted across restarts
+  db-data:       # SQLite database — shared between api and ui services
