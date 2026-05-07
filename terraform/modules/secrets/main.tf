@@ -69,16 +69,18 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
-# Uncomment when using Bedrock provider:
-# resource "aws_iam_role_policy" "bedrock_access" {
-#   name = "${var.project_name}-bedrock-invoke"
-#   role = aws_iam_role.ecs_task.id
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [{
-#       Effect   = "Allow"
-#       Action   = ["bedrock:InvokeModel"]
-#       Resource = ["arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/*"]
-#     }]
-#   })
-# }
+resource "aws_iam_role_policy" "bedrock_access" {
+  name = "${var.project_name}-bedrock-invoke"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["bedrock:InvokeModel"]
+      # Grants access to all foundation models in the configured region.
+      # Restrict to specific model ARNs in production for least-privilege.
+      Resource = ["arn:aws:bedrock:${var.aws_region}::foundation-model/*"]
+    }]
+  })
+}

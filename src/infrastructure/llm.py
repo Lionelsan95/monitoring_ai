@@ -48,9 +48,23 @@ def _build_model(cfg: LLMStepConfig) -> BaseChatModel:
             temperature=cfg.temperature,
             num_predict=cfg.max_tokens,  # Ollama uses num_predict, not max_tokens
         )
+    if cfg.provider == "bedrock":
+        from langchain_aws import ChatBedrock
+        # model must be the full Bedrock model ID, e.g.:
+        #   anthropic.claude-3-5-sonnet-20241022-v2:0
+        #   us.anthropic.claude-3-5-sonnet-20241022-v2:0  (cross-region inference)
+        # No API key — credentials come from the IAM task role (ECS) or local AWS profile.
+        return ChatBedrock(
+            model_id=cfg.model,
+            region_name=os.getenv("AWS_REGION", "eu-west-1"),
+            model_kwargs={
+                "temperature": cfg.temperature,
+                "max_tokens":  cfg.max_tokens,
+            },
+        )
     raise ValueError(
         f"Unknown LLM provider: '{cfg.provider}'. "
-        "Supported: 'openai', 'anthropic', 'ollama'."
+        "Supported: 'openai', 'anthropic', 'ollama', 'bedrock'."
     )
 
 

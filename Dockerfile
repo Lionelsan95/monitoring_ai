@@ -18,6 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra openai \
         --extra anthropic \
         --extra ollama \
+        --extra bedrock \
         --extra ui
 
 # Layer 2: application source (cache-busted only when code changes)
@@ -32,6 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra openai \
         --extra anthropic \
         --extra ollama \
+        --extra bedrock \
         --extra ui
 
 
