@@ -73,9 +73,9 @@ def build_pipeline(config: AppConfig, prompts_dir: Path | None = None):
 
     graph = StateGraph(PipelineState)
     graph.add_node("analyse",        _make_analysis_node(detector))
-    graph.add_node("recommandation", _make_recommendation_node(planner))
+    graph.add_node("recommendation", _make_recommendation_node(planner))
     graph.set_entry_point("analyse")
-    graph.add_edge("analyse",        "recommandation")
-    graph.add_edge("recommandation", END)
+    graph.add_edge("analyse",        "recommendation")
+    graph.add_edge("recommendation", END)
 
     return graph.compile()

@@ -46,7 +46,7 @@ class LLMConfig:
 
 @dataclass
 class DBConfig:
-    path: str = field(default_factory=lambda: os.getenv("DB_PATH", "monitoring_ai.db"))
+    path: str = "monitoring_ai.db"  # overridden by load_config()
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +104,16 @@ def load_config() -> AppConfig:
     defaults = yaml_data.get("defaults", {})
     nodes    = yaml_data.get("nodes", {})
 
+    # Anchor defaults to the project root (two levels above src/config.py)
+    _root        = Path(__file__).parent.parent
+    _default_db  = str(_root / "monitoring_ai.db")
+    _default_prd = str(_root / "prompts")
+
     return AppConfig(
         llm=LLMConfig(
             analysis       = _resolve_node(defaults, nodes.get("analysis", {})),
             recommendation = _resolve_node(defaults, nodes.get("recommendation", {})),
         ),
-        db          = DBConfig(),
-        prompts_dir = Path(os.getenv("PROMPTS_DIR", "prompts")),
+        db          = DBConfig(path=os.getenv("DB_PATH", _default_db)),
+        prompts_dir = Path(os.getenv("PROMPTS_DIR", _default_prd)),
     )
