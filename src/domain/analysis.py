@@ -7,7 +7,7 @@ then assembles the structured result. No LLM, no prompt, no JSON parsing here.
 from __future__ import annotations
 
 from domain.ports import AnomalyDetectorPort
-from domain.schemas import AnalysisResult, MetricRecord, Severity, Anomaly
+from domain.schemas import AnalysisResult, Anomaly, MetricRecord, Severity
 
 
 def overall_health(anomalies: list[Anomaly]) -> Severity:

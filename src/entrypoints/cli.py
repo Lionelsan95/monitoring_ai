@@ -22,7 +22,6 @@ from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
 from pipeline.graph import build_pipeline
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -113,7 +112,13 @@ def ingest(filepath: Path) -> None:
     show_default=True,
     help="Output format.",
 )
-def analyze(from_file: Path | None, window: int, start_str: str | None, end_str: str | None, output: str) -> None:
+def analyze(  # noqa: PLR0912
+    from_file: Path | None,
+    window: int,
+    start_str: str | None,
+    end_str: str | None,
+    output: str,
+) -> None:
     """Run the analysis pipeline over recent records.
 
     \b
@@ -227,7 +232,10 @@ def _print_report(report: Report) -> None:
         f"  Overall health: {report.overall_health.value.upper()}",
         fg=color, bold=True,
     ))
-    click.echo(f"  Window        : {report.window_start:%Y-%m-%d %H:%M} → {report.window_end:%Y-%m-%d %H:%M} UTC")
+    click.echo(
+        f"  Window        : {report.window_start:%Y-%m-%d %H:%M}"
+        f" → {report.window_end:%Y-%m-%d %H:%M} UTC"
+    )
     click.echo(f"{'═' * 62}\n")
 
     click.echo(f"Executive summary:\n  {report.executive_summary}\n")
@@ -242,7 +250,8 @@ def _print_report(report: Report) -> None:
         click.echo("\nRecommended actions:")
         for i, action in enumerate(report.actions, 1):
             c = _PRIORITY_COLOR.get(action.priority.value, "white")
-            click.echo(f"\n  {i}. [{click.style(action.priority.value.upper(), fg=c)}] {action.title}")
+            priority = click.style(action.priority.value.upper(), fg=c)
+            click.echo(f"\n  {i}. [{priority}] {action.title}")
             click.echo(f"     Category : {action.category}")
             click.echo(f"     {action.description}")
             click.echo(f"     Impact   : {action.impact}")

@@ -8,7 +8,6 @@ import pytest
 from domain.recommendation import run_recommendation
 from domain.schemas import Action, AnalysisResult, Priority, Severity
 
-
 # ---------------------------------------------------------------------------
 # Mock planner — implements ActionPlannerPort, no LangChain, no prompt
 # ---------------------------------------------------------------------------

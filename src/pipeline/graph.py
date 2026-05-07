@@ -16,12 +16,11 @@ from langgraph.graph import END, StateGraph
 
 from config import AppConfig
 from domain.analysis import run_analysis
-from domain.ports import AnomalyDetectorPort, ActionPlannerPort
+from domain.ports import ActionPlannerPort, AnomalyDetectorPort
 from domain.recommendation import run_recommendation
 from domain.schemas import AnalysisResult, MetricRecord, Report
 from infrastructure.llm import build_detector, build_planner
 from infrastructure.prompts import load_prompt
-
 
 # ---------------------------------------------------------------------------
 # State shared between nodes
@@ -68,8 +67,12 @@ def build_pipeline(config: AppConfig, prompts_dir: Path | None = None):
     Graph: analyse → recommendation → END
     """
     pdir     = prompts_dir or config.prompts_dir
-    detector = build_detector(config.llm.analysis,       load_prompt("analysis_system",       pdir))
-    planner  = build_planner(config.llm.recommendation,  load_prompt("recommendation_system",  pdir))
+    detector = build_detector(
+        config.llm.analysis, load_prompt("analysis_system", pdir)
+    )
+    planner = build_planner(
+        config.llm.recommendation, load_prompt("recommendation_system", pdir)
+    )
 
     graph = StateGraph(PipelineState)
     graph.add_node("analyse",        _make_analysis_node(detector))

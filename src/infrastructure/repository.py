@@ -14,7 +14,6 @@ from typing import Generator
 from config import DBConfig
 from domain.schemas import MetricRecord
 
-
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS metric_records (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,

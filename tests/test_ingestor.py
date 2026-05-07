@@ -2,14 +2,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
-from domain.ingestor import IngestResult, ingest_file, ingest_records, parse_file
-from domain.schemas import MetricRecord, ServiceStatuses, ServiceStatus
-
+from domain.ingestor import ingest_file, ingest_records, parse_file
+from domain.schemas import MetricRecord
 
 # ---------------------------------------------------------------------------
 # Mock repository — implements RepositoryPort without SQLite

@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from config import load_config
@@ -26,7 +26,6 @@ from domain.schemas import AnalyzeParams, Report
 from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
 from pipeline.graph import build_pipeline
-
 
 # ---------------------------------------------------------------------------
 # Lifespan — single initialisation at startup

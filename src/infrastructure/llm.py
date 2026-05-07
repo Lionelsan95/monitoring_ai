@@ -12,6 +12,7 @@ This is the only file that imports LangChain.
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from langchain_core.language_models import BaseChatModel
@@ -19,7 +20,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import LLMStepConfig
 from domain.schemas import Action, AnalysisResult, Anomaly, MetricRecord, Priority
-
 
 # ---------------------------------------------------------------------------
 # Shared model factory
@@ -40,8 +40,17 @@ def _build_model(cfg: LLMStepConfig) -> BaseChatModel:
             temperature=cfg.temperature,
             max_tokens=cfg.max_tokens,
         )
+    if cfg.provider == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=cfg.model,
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            temperature=cfg.temperature,
+            num_predict=cfg.max_tokens,  # Ollama uses num_predict, not max_tokens
+        )
     raise ValueError(
-        f"Unknown LLM provider: '{cfg.provider}'. Supported: 'openai', 'anthropic'."
+        f"Unknown LLM provider: '{cfg.provider}'. "
+        "Supported: 'openai', 'anthropic', 'ollama'."
     )
 
 
@@ -49,13 +58,34 @@ def _build_model(cfg: LLMStepConfig) -> BaseChatModel:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _strip_fences(raw: str) -> str:
-    """Remove markdown code fences that LLMs sometimes wrap around JSON."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-    return raw.strip()
+def _extract_json(raw: str) -> dict:
+    """Extract a JSON object from LLM output.
+
+    Handles three common failure modes from open-weight models:
+      1. Markdown code fences (```json ... ```)
+      2. Prose preamble before the JSON block ("Here is the analysis:")
+      3. Trailing text after the closing brace
+    """
+    text = raw.strip()
+
+    # Strip markdown fences if present
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        text = text.strip()
+
+    # Fast path: the whole string is valid JSON
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Slow path: extract outermost {...} block, tolerating surrounding prose
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+
+    raise json.JSONDecodeError("No JSON object found in LLM response", text, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +118,7 @@ class LangChainAnomalyDetector:
     @staticmethod
     def _parse(raw: str) -> tuple[str, list[Anomaly]]:
         try:
-            data      = json.loads(_strip_fences(raw))
+            data      = _extract_json(raw)
             summary   = data.get("summary", "Analysis completed.")
             anomalies = [Anomaly(**a) for a in data.get("anomalies", [])]
             return summary, anomalies
@@ -126,7 +156,7 @@ class LangChainActionPlanner:
     @staticmethod
     def _parse(raw: str, analysis: AnalysisResult) -> tuple[str, list[Action]]:
         try:
-            data    = json.loads(_strip_fences(raw))
+            data    = _extract_json(raw)
             summary = data.get("executive_summary", "Report generated.")
             actions = [Action(**a) for a in data.get("actions", [])]
             return summary, actions

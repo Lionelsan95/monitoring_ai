@@ -8,8 +8,6 @@ dependencies = [
     "pydantic>=2.10",
     "langgraph>=0.2",
     "langchain-core>=0.3",
-    "langchain-openai>=0.2",
-    "langchain-anthropic>=0.3",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "click>=8.1",
@@ -20,13 +18,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+openai    = ["langchain-openai>=0.2"]
+anthropic = ["langchain-anthropic>=0.3"]
+ollama    = ["langchain-ollama>=0.2"]
+bedrock   = ["langchain-aws>=0.2"]
+ui        = ["streamlit>=1.35"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
+    "ruff>=0.4",
 ]
-ui = [
-    "streamlit>=1.35",
+all = [
+    "monitoring-ai[openai,anthropic,ollama,ui]",
 ]
 
 [project.scripts]
@@ -42,3 +46,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

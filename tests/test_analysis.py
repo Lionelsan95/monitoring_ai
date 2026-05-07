@@ -8,7 +8,6 @@ import pytest
 from domain.analysis import overall_health, run_analysis
 from domain.schemas import Anomaly, AnomalyStatus, MetricRecord, Severity
 
-
 _TS = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -25,6 +24,18 @@ class _MockDetector:
         return self._summary, self._anomalies
 
 
+def _anomaly(metric: str, severity: Severity, description: str = "x") -> Anomaly:
+    return Anomaly(
+        metric=metric,
+        value=95.0,
+        threshold=90.0,
+        severity=severity,
+        description=description,
+        started_at=_TS,
+        status=AnomalyStatus.active,
+    )
+
+
 # ---------------------------------------------------------------------------
 # overall_health
 # ---------------------------------------------------------------------------
@@ -34,14 +45,13 @@ def test_overall_health_no_anomaly() -> None:
 
 
 def test_overall_health_warning() -> None:
-    anomaly = Anomaly(metric="cpu", value=80.0, threshold=75.0, severity=Severity.warning, description="high cpu", started_at=_TS, status=AnomalyStatus.active)
-    assert overall_health([anomaly]) == Severity.warning
+    assert overall_health([_anomaly("cpu", Severity.warning)]) == Severity.warning
 
 
 def test_overall_health_critical_dominates() -> None:
     anomalies = [
-        Anomaly(metric="cpu",    value=95.0, threshold=90.0, severity=Severity.critical, description="critical cpu",    started_at=_TS, status=AnomalyStatus.active),
-        Anomaly(metric="memory", value=80.0, threshold=75.0, severity=Severity.warning,  description="warning memory",  started_at=_TS, status=AnomalyStatus.active),
+        _anomaly("cpu",    Severity.critical),
+        _anomaly("memory", Severity.warning),
     ]
     assert overall_health(anomalies) == Severity.critical
 
@@ -51,20 +61,19 @@ def test_overall_health_critical_dominates() -> None:
 # ---------------------------------------------------------------------------
 
 def test_run_analysis_returns_detector_output(sample_record: MetricRecord) -> None:
-    anomaly  = Anomaly(metric="cpu_usage", value=92.0, threshold=90.0, severity=Severity.critical, description="high cpu", started_at=_TS, status=AnomalyStatus.active)
+    anomaly  = _anomaly("cpu_usage", Severity.critical, "high cpu")
     detector = _MockDetector("All good.", [anomaly])
 
     result = run_analysis(records=[sample_record], detector=detector)
 
-    assert result.summary      == "All good."
-    assert result.record_count == 1
+    assert result.summary        == "All good."
+    assert result.record_count   == 1
     assert len(result.anomalies) == 1
     assert result.anomalies[0].metric == "cpu_usage"
 
 
 def test_run_analysis_derives_health_from_anomalies(sample_record: MetricRecord) -> None:
-    critical = Anomaly(metric="cpu", value=95.0, threshold=90.0, severity=Severity.critical, description="x", started_at=_TS, status=AnomalyStatus.active)
-    detector = _MockDetector("Critical state.", [critical])
+    detector = _MockDetector("Critical state.", [_anomaly("cpu", Severity.critical)])
 
     result = run_analysis(records=[sample_record], detector=detector)
 
@@ -76,8 +85,8 @@ def test_run_analysis_healthy_when_no_anomalies(sample_record: MetricRecord) -> 
 
     result = run_analysis(records=[sample_record], detector=detector)
 
-    assert result.anomalies    == []
-    assert result.overall_health == Severity.info
+    assert result.anomalies       == []
+    assert result.overall_health  == Severity.info
 
 
 def test_run_analysis_raises_on_empty_records() -> None:

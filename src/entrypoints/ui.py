@@ -11,11 +11,10 @@ FastAPI server — both can run independently.
 """
 from __future__ import annotations
 
-import json
+import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import tempfile
-import os
 
 import streamlit as st
 
@@ -25,7 +24,6 @@ from domain.schemas import AnomalyStatus, Report, Severity
 from infrastructure.repository import MetricRepository
 from infrastructure.tracing import build_run_config
 from pipeline.graph import build_pipeline
-
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -194,7 +192,9 @@ def _tab_analyze(repo: MetricRepository, pipeline, config) -> None:
     if "range_start_date" not in st.session_state:
         st.session_state["range_start_date"] = (now - timedelta(hours=1)).date()
     if "range_start_time" not in st.session_state:
-        st.session_state["range_start_time"] = (now - timedelta(hours=1)).replace(second=0, microsecond=0).time()
+        st.session_state["range_start_time"] = (
+            (now - timedelta(hours=1)).replace(second=0, microsecond=0).time()
+        )
     if "range_end_date" not in st.session_state:
         st.session_state["range_end_date"] = now.date()
     if "range_end_time" not in st.session_state:
@@ -291,7 +291,10 @@ def _tab_analyze_file(pipeline) -> None:
 
 def main() -> None:
     st.title("Monitoring AI")
-    st.caption("LLM-assisted infrastructure analysis — ingest metrics, detect anomalies, get recommendations.")
+    st.caption(
+        "LLM-assisted infrastructure analysis — "
+        "ingest metrics, detect anomalies, get recommendations."
+    )
 
     repo, pipeline, config = _load_resources()
 

@@ -1,0 +1,27 @@
+# ── Local Ollama configuration ────────────────────────────────────────────────
+# Used automatically by docker-compose (CONFIG_PATH=/app/config/ollama.yaml).
+# For local dev without compose: CONFIG_PATH=config/ollama.yaml uv run monitoring-ai analyze
+#
+# Recommended models (RAM requirements):
+#   llama3.2:3b   — 4 GB  (default, fast, good JSON compliance)
+#   llama3.1:8b   — 8 GB  (better reasoning, slower)
+#   mistral:7b    — 8 GB  (solid alternative)
+#
+# Pull the model first:
+#   docker compose exec ollama ollama pull llama3.2:3b
+#   (or: make ollama-pull)
+
+defaults:
+  temperature: 0.2
+  max_tokens: 2048
+
+nodes:
+  analysis:
+    provider: ollama
+    model: llama3.2:3b
+    temperature: 0.2
+
+  recommendation:
+    provider: ollama
+    model: llama3.2:3b
+    temperature: 0.3

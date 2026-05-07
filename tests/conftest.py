@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from domain.schemas import MetricRecord, ServiceStatuses, ServiceStatus
+from domain.schemas import MetricRecord, ServiceStatus, ServiceStatuses
 
 
 @pytest.fixture
